@@ -29,60 +29,39 @@ def _build_windows(segs: List[Dict]) -> List[Dict]:
 def select_narrative_sequence(transcript: Dict, count: int=5, target_duration: float=55.0) -> List[Dict]:
     """Split the story from the beginning into chronological, adjacent episodes."""
     segs=[s for s in transcript.get("segments",[]) if float(s.get("end",0))>float(s.get("start",0)) and str(s.get("text","")).strip()]
-    if not segs or count <= 0:
-        return []
-    total_end=float(segs[-1].get("end",0))
-    clips=[]
-    cursor=0.0
+    if not segs or count <= 0: return []
+    total_end=float(segs[-1].get("end",0)); clips=[]; cursor=0.0
     min_duration=max(5.0,min(15.0,target_duration*0.5))
     for part in range(1,count+1):
-        if cursor >= total_end-0.25:
-            break
+        if cursor >= total_end-0.25: break
         remaining_parts=count-part+1
-        remaining_duration=max(0.0,total_end-cursor)
         desired_end=min(total_end,cursor+target_duration)
-        if remaining_parts == 1:
-            desired_end=total_end
+        if remaining_parts == 1: desired_end=total_end
         candidates=[s for s in segs if float(s.get("end",0))>cursor+min_duration and float(s.get("end",0))<=min(total_end,cursor+max(70.0,target_duration*1.35))]
         if candidates:
-            # Prefer natural sentence endings close to the target.
             scored=[]
             for s in candidates:
                 e=float(s.get("end",0)); text=str(s.get("text","")).strip()
                 punctuation=1 if text.endswith((".", "!", "?", "؟", "。")) else 0
-                distance=abs(e-desired_end)
-                scored.append((punctuation, -distance, e))
+                scored.append((punctuation,-abs(e-desired_end),e))
             boundary=max(scored)[2]
-        else:
-            boundary=desired_end
+        else: boundary=desired_end
         boundary=max(cursor+min_duration,min(boundary,total_end))
         text=" ".join(str(s.get("text","")).strip() for s in segs if float(s.get("end",0))>cursor and float(s.get("start",0))<boundary).strip()
-        clips.append({
-            "title":f"Part {part} — {text[:70]}",
-            "start_time":round(cursor,3),
-            "end_time":round(boundary,3),
-            "score":100-part,
-            "hook_sentence":text[:220],
-            "virality_reason":"Sequential narrative segment; follows the original story order and starts immediately after the previous part."
-        })
+        clips.append({"title":f"Part {part} — {text[:70]}","start_time":round(cursor,3),"end_time":round(boundary,3),"score":100-part,"hook_sentence":text[:220],"virality_reason":"Sequential narrative segment; follows the original story order and starts immediately after the previous part."})
         cursor=boundary
     return clips
-
 
 def select_highlights(transcript: Dict, count: int=5) -> List[Dict]:
     windows=_build_windows(transcript.get("segments",[])); candidates=[]
     for i,w in enumerate(windows):
         text=" ".join(w["texts"]).strip(); duration=w["end"]-w["start"]
         if duration<8: continue
-        score=score_segment(text)
-        candidates.append((score,i,w["start"],w["end"],text))
-    candidates.sort(reverse=True)
-    chosen=[]
+        candidates.append((score_segment(text),i,w["start"],w["end"],text))
+    candidates.sort(reverse=True); chosen=[]
     for score,i,start,end,text in candidates:
         if any(max(start,x["start_time"])<min(end,x["end_time"]) for x in chosen): continue
-        # Keep clips in the useful 8-60s range and bias toward an early hook.
-        clip_end=min(end+35,start+60)
-        clip_start=max(0,start-1.0)
+        clip_end=min(end+35,start+60); clip_start=max(0,start-1.0)
         chosen.append({"title":text[:80],"start_time":clip_start,"end_time":clip_end,"score":round(score),"hook_sentence":text[:220],"virality_reason":"Local hook score using curiosity, problem/benefit language, questions and speech density."})
         if len(chosen)>=count: break
     return sorted(chosen,key=lambda x:x["score"],reverse=True)
