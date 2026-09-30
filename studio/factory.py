@@ -25,10 +25,7 @@ def _hashtags(text: str) -> List[str]:
 def make_metadata(hook: str, template: str="youtube") -> Dict:
     clean=re.sub(r"s+"," ",hook).strip(" .!?") or "The moment you need to hear"
     title=f"{clean[:88].rstrip()} #Shorts"
-    description=f"{clean}.
-
-Edited automatically with VideoForge.
-#Shorts #YouTubeShorts"
+    description=(f"{clean}.`n`nEdited automatically with VideoForge.`n#Shorts #YouTubeShorts")
     return {"title":title[:100],"description":description,"hashtags":_hashtags(clean),"privacy_status":"private","template":template}
 
 def build_listing_command(url: str, limit: int) -> List[str]:
