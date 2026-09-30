@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+output/
+*.mp4
+.DS_Store
+client_secrets.json
+youtube_token.pickle
+studio_uploads/
+studio_output/
