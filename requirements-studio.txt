@@ -1,0 +1,10 @@
+flask>=3.1
+faster-whisper>=1.2
+yt-dlp>=2026.8
+opencv-python>=5.0
+requests>=2.34
+python-dotenv>=1.2
+google-api-python-client>=2.180
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
+gunicorn>=23.0
