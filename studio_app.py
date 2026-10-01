@@ -1,7 +1,7 @@
 import os, threading, uuid, re, subprocess, random
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, render_template_string
-from studio.core import select_highlights, select_narrative_sequence, build_keep_ranges, word_timings
+from studio.core import select_highlights, select_narrative_sequence, build_keep_ranges, word_timings, detect_visual_scene_boundaries
 from studio.factory import classify_source, build_listing_command, normalize_entries, select_video_urls, make_metadata
 from studio.youtube_upload import upload_video, youtube_upload_ready
 from shorts_generator.local.transcriber import transcribe_local
@@ -64,7 +64,7 @@ def run_job(job_id,paths,count,opts):
     try:
         clips=[]; total=len(paths)
         for vi,path in enumerate(paths):
-            base=vi/total*100; JOBS[job_id].update(status="working",progress=int(base),message=f"Transcribing {vi+1}/{total} locally..."); transcript=transcribe_local(str(path)); JOBS[job_id].update(progress=int(base+20/total),message=f"Building narrative sequence {vi+1}/{total}..."); highlights=select_narrative_sequence(transcript,count,target_duration=55.0)
+            base=vi/total*100; JOBS[job_id].update(status="working",progress=int(base),message=f"Transcribing {vi+1}/{total} locally..."); transcript=transcribe_local(str(path)); JOBS[job_id].update(progress=int(base+20/total),message=f"Analyzing visual scene boundaries {vi+1}/{total}..."); scene_boundaries=detect_visual_scene_boundaries(str(path)); JOBS[job_id].update(progress=int(base+20/total),message=f"Building narrative sequence {vi+1}/{total}..."); highlights=select_narrative_sequence(transcript,count,target_duration=55.0,scene_boundaries=scene_boundaries)
             for n,h in enumerate(highlights,1):
                 JOBS[job_id].update(progress=min(99,int(base+20/total+(70/total)*(n/len(highlights)))),message=f"Rendering {vi+1}/{total} — short {n}/{len(highlights)}..."); ass=OUTPUT/f"{job_id}_{vi+1}_{n}.ass"; out=OUTPUT/f"{job_id}_{vi+1}_{n}.mp4"; make_ass(transcript,h["start_time"],h["end_time"],str(ass),opts["template"],opts["captions"]); render(str(path),h["start_time"],h["end_time"],str(ass),str(out),transcript,opts["silence"]=="on",opts["zoom"]=="on",opts["broll"]=="auto"); meta=make_metadata(h["hook_sentence"],opts["template"]); upload_status="disabled"
                 if opts.get("upload")=="on":

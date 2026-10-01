@@ -1,4 +1,4 @@
-from studio.core import score_segment, select_highlights, select_narrative_sequence, build_keep_ranges, map_time
+from studio.core import score_segment, select_highlights, select_narrative_sequence, build_keep_ranges, map_time, choose_scene_aware_boundary
 
 def test_hook_language_scores_above_plain_text():
     assert score_segment("Nobody knows the secret mistake that changed everything!") > score_segment("Today we discuss the weather.")
@@ -49,41 +49,46 @@ def test_keep_ranges_remove_long_silence_and_map_time():
     assert map_time(9,ranges)==7.0
 
 def test_narrative_sequence_does_not_make_last_part_cover_entire_remainder():
-    transcript = {"segments": [
-        {"start": i, "end": i + 10, "text": f"story part {i}"}
-        for i in range(0, 600, 10)
+    transcript={"segments":[
+        {"start":i,"end":i+10,"text":f"story part {i}"}
+        for i in range(0,600,10)
     ]}
-    clips = select_narrative_sequence(transcript, count=5, target_duration=55)
-    assert len(clips) == 5
-    assert all(c["end_time"] - c["start_time"] <= 70 for c in clips)
-    for prev, cur in zip(clips, clips[1:]):
+    clips=select_narrative_sequence(transcript,count=5,target_duration=55)
+    assert len(clips)==5
+    assert all(c["end_time"]-c["start_time"] <= 70 for c in clips)
+    for prev,cur in zip(clips,clips[1:]):
         assert cur["start_time"] == prev["end_time"]
 
 def test_narrative_sequence_starts_at_first_speech_segment():
-    transcript = {"segments": [
-        {"start": 18, "end": 28, "text": "the story begins here"},
-        {"start": 28, "end": 38, "text": "then this happened"},
-        {"start": 38, "end": 48, "text": "and then the result"},
+    transcript={"segments":[
+        {"start":18,"end":28,"text":"the story begins here"},
+        {"start":28,"end":38,"text":"then this happened"},
+        {"start":38,"end":48,"text":"and then the result"},
     ]}
-    clips = select_narrative_sequence(transcript, count=2, target_duration=20)
+    clips=select_narrative_sequence(transcript,count=2,target_duration=20)
     assert clips[0]["start_time"] == 18
 
 def test_narrative_sequence_prefers_a_nearby_scene_break_over_an_early_sentence_end():
-    transcript = {"segments": [
-        {"start": 0, "end": 30, "text": "The setup explains what happened."},
-        {"start": 30, "end": 48, "text": "The investigation reaches a turning point."},
-        {"start": 50, "end": 56, "text": "The next scene begins after a clear pause"},
-        {"start": 56, "end": 65, "text": "and the story continues from there."},
+    transcript={"segments":[
+        {"start":0,"end":30,"text":"The setup explains what happened."},
+        {"start":30,"end":48,"text":"The investigation reaches a turning point."},
+        {"start":50,"end":56,"text":"The next scene begins after a clear pause"},
+        {"start":56,"end":65,"text":"and the story continues from there."},
     ]}
-    clips = select_narrative_sequence(transcript, count=2, target_duration=55)
+    clips=select_narrative_sequence(transcript,count=2,target_duration=55)
     assert clips[0]["end_time"] == 56
 
 def test_narrative_sequence_avoids_boundary_before_a_continuation_clause():
-    transcript = {"segments": [
-        {"start": 0, "end": 20, "text": "The decision looked simple on paper."},
-        {"start": 20, "end": 30, "text": "But the result was different because."},
-        {"start": 30, "end": 42, "text": "because the market changed overnight."},
-        {"start": 42, "end": 55, "text": "That forced the team to change direction."},
+    transcript={"segments":[
+        {"start":0,"end":20,"text":"The decision looked simple on paper."},
+        {"start":20,"end":30,"text":"But the result was different because."},
+        {"start":30,"end":42,"text":"because the market changed overnight."},
+        {"start":42,"end":55,"text":"That forced the team to change direction."},
     ]}
-    clips = select_narrative_sequence(transcript, count=2, target_duration=32)
+    clips=select_narrative_sequence(transcript,count=2,target_duration=32)
     assert clips[0]["end_time"] == 42
+
+def test_scene_aware_boundary_prefers_nearby_visual_scene_change():
+    scene_boundaries=[48.0,56.0,74.0]
+    boundary=choose_scene_aware_boundary(50.0,scene_boundaries,45.0,70.0)
+    assert boundary == 56.0
