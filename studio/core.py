@@ -90,9 +90,21 @@ def select_narrative_sequence(transcript: Dict, count: int=5, target_duration: O
             reserved=remaining_duration/remaining_parts
             search_max=min(search_max,total_end-reserved*(remaining_parts-1))
         candidates=[s for s in segs if float(s.get("end",0))>=search_min and float(s.get("end",0))<=search_max]
-        if total_duration is not None:
-            # Full-video mode is an exact partition: every source second belongs to one part.
-            # Transcript/scene data may guide captions, but must never shorten the story.
+        if total_duration is not None and candidates:
+            # Full-video mode keeps exact 0..total_duration coverage, but chooses each
+            # internal boundary from speech structure instead of a blind time split.
+            scored=[]
+            for s in candidates:
+                e=float(s.get("end",0)); text=str(s.get("text","")).strip()
+                punctuation=8.0 if text.endswith((".","!","?","؟","؛","。","！")) else 0.0
+                next_start=next((float(n.get("start",e)) for n in segs if float(n.get("start",0))>=e-0.001 and float(n.get("start",0))>e),e)
+                pause=min(3.0,max(0.0,next_start-e))
+                pause_bonus=pause*3.0
+                visual_bonus=12.0 if any(abs(e-x)<=1.5 for x in scene_boundaries) else 0.0
+                scored.append((punctuation+pause_bonus+visual_bonus-abs(e-desired_end),e))
+            boundary=max(scored)[1]
+        elif total_duration is not None:
+            # No usable transcript boundary: preserve the exact partition.
             boundary=desired_end
         elif candidates:
             scored=[]

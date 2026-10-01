@@ -49,6 +49,32 @@ def test_keep_ranges_remove_long_silence_and_map_time():
     assert map_time(8,ranges)==6.0
     assert map_time(9,ranges)==7.0
 
+def test_narrative_sequence_prefers_arabic_sentence_boundary_without_english_word_rules():
+    transcript={"segments":[
+        {"start":0,"end":24,"text":"في البداية نعرض المشكلة التي حدثت."},
+        {"start":24,"end":31,"text":"ثم نصل إلى النقطة المهمة،"},
+        {"start":31,"end":39,"text":"وهنا تبدأ القصة الحقيقية بعد ذلك."},
+        {"start":39,"end":48,"text":"وفي النهاية تظهر النتيجة."},
+    ]}
+    clips=select_narrative_sequence(transcript,count=2,target_duration=30,total_duration=48)
+    assert clips[0]["end_time"] == 24
+
+
+def test_full_video_narrative_uses_speech_structure_but_preserves_exact_coverage():
+    transcript={"segments":[
+        {"start":0,"end":21,"text":"هذه بداية القصة وفيها تفاصيل كثيرة."},
+        {"start":21,"end":31,"text":"ثم ننتقل إلى حدث جديد بعد صمت واضح."},
+        {"start":31,"end":43,"text":"وتستمر الأحداث حتى نصل إلى النهاية."},
+        {"start":43,"end":50,"text":"وهنا تظهر الخلاصة."},
+    ]}
+    clips=select_narrative_sequence(transcript,count=2,target_duration=None,total_duration=50)
+    assert len(clips)==2
+    assert clips[0]["start_time"] == 0
+    assert clips[0]["end_time"] == clips[1]["start_time"]
+    assert clips[-1]["end_time"] == 50
+    assert clips[0]["end_time"] == 21
+
+
 def test_narrative_sequence_partitions_the_entire_story_into_requested_count():
     transcript={"segments":[
         {"start":i,"end":i+10,"text":f"story part {i}"}
