@@ -65,19 +65,36 @@ def _build_windows(segs: List[Dict]) -> List[Dict]:
     if current: windows.append(current)
     return windows
 
-def select_narrative_sequence(transcript: Dict, count: int=5, target_duration: float=55.0, scene_boundaries: Optional[List[float]]=None) -> List[Dict]:
-    """Split the story from first speech into chronological, adjacent episodes."""
+def select_narrative_sequence(transcript: Dict, count: int=5, target_duration: Optional[float]=55.0, scene_boundaries: Optional[List[float]]=None, total_duration: Optional[float]=None) -> List[Dict]:
+    """Split the full story into chronological, adjacent episodes covering its entire speech timeline."""
     segs=[s for s in transcript.get("segments",[]) if float(s.get("end",0))>float(s.get("start",0)) and str(s.get("text","")).strip()]
     if not segs or count <= 0: return []
-    total_end=float(segs[-1].get("end",0)); clips=[]; cursor=float(segs[0].get("start",0))
-    min_duration=max(5.0,min(15.0,target_duration*0.5)); scene_boundaries=scene_boundaries or []
+    total_end=float(total_duration) if total_duration is not None else float(segs[-1].get("end",0)); clips=[]; cursor=0.0 if total_duration is not None else float(segs[0].get("start",0))
+    scene_boundaries=scene_boundaries or []
     for part in range(1,count+1):
         if cursor >= total_end-0.25: break
-        remaining_parts=count-part+1; desired_end=min(total_end,cursor+target_duration)
+        remaining_parts=count-part+1
+        remaining_duration=max(0.0,total_end-cursor)
+        target=target_duration if target_duration is not None else remaining_duration/remaining_parts
+        desired_end=min(total_end,cursor+target)
         if remaining_parts == 1: desired_end=total_end
-        search_max=min(total_end,cursor+max(70.0,target_duration*1.35))
-        candidates=[s for s in segs if float(s.get("end",0))>cursor+min_duration and float(s.get("end",0))<=search_max]
-        if candidates:
+        if total_duration is not None:
+            min_duration=max(0.5,min(15.0,target*0.35,remaining_duration/remaining_parts*0.5))
+        else:
+            min_duration=max(5.0,min(15.0,target*0.5))
+        search_radius=8.0 if total_duration is not None else max(30.0,target*0.35)
+        search_min=max(cursor+min_duration,desired_end-search_radius) if total_duration is not None else cursor+min_duration
+        search_max=min(total_end,desired_end+search_radius)
+        if total_duration is not None and remaining_parts > 1:
+            # Reserve an equal share for every remaining part so a scene boundary can never consume them.
+            reserved=remaining_duration/remaining_parts
+            search_max=min(search_max,total_end-reserved*(remaining_parts-1))
+        candidates=[s for s in segs if float(s.get("end",0))>=search_min and float(s.get("end",0))<=search_max]
+        if total_duration is not None:
+            # Full-video mode is an exact partition: every source second belongs to one part.
+            # Transcript/scene data may guide captions, but must never shorten the story.
+            boundary=desired_end
+        elif candidates:
             scored=[]
             for i,s in enumerate(candidates):
                 e=float(s.get("end",0)); text=str(s.get("text","")).strip(); words=text.lower().split(); last_word=words[-1].strip(".,!?") if words else ""
