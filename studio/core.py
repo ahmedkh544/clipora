@@ -40,11 +40,17 @@ def select_narrative_sequence(transcript: Dict, count: int=5, target_duration: f
         candidates=[s for s in segs if float(s.get("end",0))>cursor+min_duration and float(s.get("end",0))<=min(total_end,cursor+max(70.0,target_duration*1.35))]
         if candidates:
             scored=[]
-            for s in candidates:
+            for i,s in enumerate(candidates):
                 e=float(s.get("end",0)); text=str(s.get("text","")).strip()
                 punctuation=1 if text.endswith((".", "!", "?", "؟", "。")) else 0
-                scored.append((punctuation,-abs(e-desired_end),e))
-            boundary=max(scored)[2]
+                pause=0.0
+                if i > 0:
+                    previous_end=float(candidates[i-1].get("end",e))
+                    candidate_start=float(s.get("start",e))
+                    pause=min(3.0,max(0.0,candidate_start-previous_end))
+                natural_bonus=punctuation*4.0 + pause*3.0
+                scored.append((natural_bonus-abs(e-desired_end),e))
+            boundary=max(scored)[1]
         else: boundary=desired_end
         boundary=max(cursor+min_duration,min(boundary,total_end))
         text=" ".join(str(s.get("text","")).strip() for s in segs if float(s.get("end",0))>cursor and float(s.get("start",0))<boundary).strip()

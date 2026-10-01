@@ -37,7 +37,6 @@ def test_narrative_sequence_is_contiguous_and_ordered():
     assert out[0]["end_time"] <= out[1]["start_time"]
     assert out[1]["end_time"] <= out[2]["start_time"]
 
-
 def test_keep_ranges_remove_long_silence_and_map_time():
     tr={"segments":[
         {"start":0,"end":4,"text":"one"},
@@ -48,7 +47,6 @@ def test_keep_ranges_remove_long_silence_and_map_time():
     assert ranges == [(0.0,6.0),(8.0,10.0)]
     assert map_time(8,ranges)==6.0
     assert map_time(9,ranges)==7.0
-
 
 def test_narrative_sequence_does_not_make_last_part_cover_entire_remainder():
     transcript = {"segments": [
@@ -61,7 +59,6 @@ def test_narrative_sequence_does_not_make_last_part_cover_entire_remainder():
     for prev, cur in zip(clips, clips[1:]):
         assert cur["start_time"] == prev["end_time"]
 
-
 def test_narrative_sequence_starts_at_first_speech_segment():
     transcript = {"segments": [
         {"start": 18, "end": 28, "text": "the story begins here"},
@@ -70,3 +67,13 @@ def test_narrative_sequence_starts_at_first_speech_segment():
     ]}
     clips = select_narrative_sequence(transcript, count=2, target_duration=20)
     assert clips[0]["start_time"] == 18
+
+def test_narrative_sequence_prefers_a_nearby_scene_break_over_an_early_sentence_end():
+    transcript = {"segments": [
+        {"start": 0, "end": 30, "text": "The setup explains what happened."},
+        {"start": 30, "end": 48, "text": "The investigation reaches a turning point."},
+        {"start": 50, "end": 56, "text": "The next scene begins after a clear pause"},
+        {"start": 56, "end": 65, "text": "and the story continues from there."},
+    ]}
+    clips = select_narrative_sequence(transcript, count=2, target_duration=55)
+    assert clips[0]["end_time"] == 56
