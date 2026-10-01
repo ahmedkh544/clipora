@@ -27,10 +27,10 @@ def _build_windows(segs: List[Dict]) -> List[Dict]:
     return windows
 
 def select_narrative_sequence(transcript: Dict, count: int=5, target_duration: float=55.0) -> List[Dict]:
-    """Split the story from the beginning into chronological, adjacent episodes."""
+    """Split the story from the first speech segment into chronological, adjacent episodes."""
     segs=[s for s in transcript.get("segments",[]) if float(s.get("end",0))>float(s.get("start",0)) and str(s.get("text","")).strip()]
     if not segs or count <= 0: return []
-    total_end=float(segs[-1].get("end",0)); clips=[]; cursor=0.0
+    total_end=float(segs[-1].get("end",0)); clips=[]; cursor=float(segs[0].get("start",0))
     min_duration=max(5.0,min(15.0,target_duration*0.5))
     for part in range(1,count+1):
         if cursor >= total_end-0.25: break

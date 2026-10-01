@@ -48,3 +48,25 @@ def test_keep_ranges_remove_long_silence_and_map_time():
     assert ranges == [(0.0,6.0),(8.0,10.0)]
     assert map_time(8,ranges)==6.0
     assert map_time(9,ranges)==7.0
+
+
+def test_narrative_sequence_does_not_make_last_part_cover_entire_remainder():
+    transcript = {"segments": [
+        {"start": i, "end": i + 10, "text": f"story part {i}"}
+        for i in range(0, 600, 10)
+    ]}
+    clips = select_narrative_sequence(transcript, count=5, target_duration=55)
+    assert len(clips) == 5
+    assert all(c["end_time"] - c["start_time"] <= 70 for c in clips)
+    for prev, cur in zip(clips, clips[1:]):
+        assert cur["start_time"] == prev["end_time"]
+
+
+def test_narrative_sequence_starts_at_first_speech_segment():
+    transcript = {"segments": [
+        {"start": 18, "end": 28, "text": "the story begins here"},
+        {"start": 28, "end": 38, "text": "then this happened"},
+        {"start": 38, "end": 48, "text": "and then the result"},
+    ]}
+    clips = select_narrative_sequence(transcript, count=2, target_duration=20)
+    assert clips[0]["start_time"] == 18
