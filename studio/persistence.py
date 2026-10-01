@@ -90,6 +90,10 @@ def can_create_job(user):
     return user["plan"]=="pro" or monthly_job_count(user["id"])<FREE_MONTHLY_JOBS
 
 
+def set_plan(user_id,plan):
+    with _db() as c:c.execute("UPDATE users SET plan=? WHERE id=?",(plan,user_id))
+
+
 def create_job(job_id,user_id):
     now=time.time()
     with _db() as c:c.execute("INSERT INTO jobs(id,user_id,status,progress,message,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",(job_id,user_id,"queued",0,"Queued",now,now))

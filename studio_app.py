@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from flask import Flask, jsonify, redirect, render_template_string, request, send_file, session
 from studio.core import build_keep_ranges, detect_visual_scene_boundaries, select_narrative_sequence
-from studio.persistence import can_create_job, cleanup_old_files, create_job, create_session, create_user, get_job, get_user_by_session, logout, recent_jobs, authenticate, update_job
+from studio.persistence import can_create_job, cleanup_old_files, create_job, create_session, create_user, get_job, get_user_by_session, logout, recent_jobs, authenticate, update_job, set_plan
 from studio.storage import OUTPUT_DIR, UPLOAD_DIR, presigned_get, storage_mode, upload_object, cleanup_s3
 from studio.toolbox import vertical_crop_x, visual_filter
 from studio.factory import classify_source, build_listing_command, normalize_entries, select_video_urls, make_metadata
@@ -31,9 +31,10 @@ threading.Thread(target=cleanup_loop,daemon=True).start()
 HTML="""<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Clipora AI Studio</title><style>
 *{box-sizing:border-box}body{font-family:Inter,Arial,sans-serif;background:#090d14;color:#eef2f7;max-width:1180px;margin:auto;padding:22px}header{display:flex;justify-content:space-between;align-items:center;gap:15px}h1{font-size:42px;margin:0}.muted{color:#8d99aa}.card{background:#111827;border:1px solid #263244;border-radius:18px;padding:20px;margin:16px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}label{display:block;color:#cbd5e1}input,select,button{width:100%;padding:11px;margin-top:6px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#fff}button{background:#2563eb;border:0;font-weight:700;cursor:pointer}.row{display:flex;gap:10px;align-items:center}.row>*{flex:1}.bar{height:10px;background:#263244;border-radius:10px;overflow:hidden}.fill{height:100%;width:0;background:#22c55e}.job{border:1px solid #263244;border-radius:14px;padding:14px;margin-top:12px}.clip{display:grid;grid-template-columns:180px 1fr;gap:15px;padding:14px 0;border-top:1px solid #263244}.clip video{width:180px;aspect-ratio:9/16;background:#000;border-radius:10px;object-fit:contain}.badge{padding:5px 9px;border-radius:999px;background:#1e293b;color:#cbd5e1;font-size:12px}.error{color:#fca5a5}.success{color:#86efac}@media(max-width:650px){.clip{grid-template-columns:1fr}.clip video{width:100%;max-width:280px}}
 </style></head><body><header><div><h1>Clipora</h1><div class='muted'>Arabic-first narrative video → sequential 9:16 Shorts</div></div><div>{% if user %}<span class='badge'>{{user.email}} · {{user.plan|upper}}</span> <button style='width:auto;padding:8px 12px' onclick='logout()'>Logout</button>{% endif %}</div></header>
-{% if not user %}<section class='card'><h2>Sign in / Create account</h2><div class='grid'><label>Email<input id='email' type='email' autocomplete='email'></label><label>Password<input id='password' type='password' autocomplete='current-password'></label></div><div class='row' style='margin-top:10px'><button onclick='auth("login")'>Sign in</button><button onclick='auth("register")'>Create free account</button></div><p id='authmsg' class='muted'></p></section>{% else %}<section class='card'><h2>Create Shorts</h2><form id='f'><div class='grid'><label>Video files<input type='file' name='videos' accept='video/*' multiple></label><label>YouTube URL<input name='url' type='url' placeholder='Optional YouTube URL'></label><label>Shorts per video<input name='count' type='number' min='1' max='20' value='8'></label><label>Template<select name='template'><option value='tiktok'>TikTok</option><option value='reels'>Instagram Reels</option><option value='youtube'>YouTube Shorts</option></select></label><label>Captions<select name='captions'><option value='karaoke'>Arabic word highlight</option><option value='plain'>Arabic line captions</option><option value='off'>Off</option></select></label><label>Visual processing<select name='visuals'><option value='on'>Smart 9:16 + subtle zoom</option><option value='off'>9:16 center crop</option></select></label></div><button style='margin-top:14px'>CREATE SHORTS</button></form><p id='status' class='muted'></p><div class='bar'><div id='fill' class='fill'></div></div><p class='muted'>Free plan: 3 jobs/month. Pro plan removes the monthly job limit.</p></section><section class='card'><h2>Jobs</h2><div id='jobs'></div></section><script>
+{% if not user %}<section class='card'><h2>Sign in / Create account</h2><div class='grid'><label>Email<input id='email' type='email' autocomplete='email'></label><label>Password<input id='password' type='password' autocomplete='current-password'></label></div><div class='row' style='margin-top:10px'><button onclick='auth("login")'>Sign in</button><button onclick='auth("register")'>Create free account</button></div><p id='authmsg' class='muted'></p></section>{% else %}<section class='card'><h2>Create Shorts</h2><form id='f'><div class='grid'><label>Video files<input type='file' name='videos' accept='video/*' multiple></label><label>YouTube URL<input name='url' type='url' placeholder='Optional YouTube URL'></label><label>Shorts per video<input name='count' type='number' min='1' max='20' value='8'></label><label>Template<select name='template'><option value='tiktok'>TikTok</option><option value='reels'>Instagram Reels</option><option value='youtube'>YouTube Shorts</option></select></label><label>Captions<select name='captions'><option value='karaoke'>Arabic word highlight</option><option value='plain'>Arabic line captions</option><option value='off'>Off</option></select></label><label>Visual processing<select name='visuals'><option value='on'>Smart 9:16 + subtle zoom</option><option value='off'>9:16 center crop</option></select></label></div><button style='margin-top:14px'>CREATE SHORTS</button></form><p id='status' class='muted'></p><div class='bar'><div id='fill' class='fill'></div></div><p class='muted'>Free plan: 3 jobs/month. Pro removes the monthly job limit.{% if user and user.plan=='free' %} <button style='width:auto;padding:8px 12px' onclick='upgrade()'>Upgrade to Pro</button>{% endif %}</p></section><section class='card'><h2>Jobs</h2><div id='jobs'></div></section><script>
 async function auth(mode){const body={email:email.value,password:password.value};const x=await fetch('/api/auth/'+mode,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await x.json();if(!x.ok){authmsg.textContent=j.error||'Error';return}location.reload()}
 async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.reload()}
+async function upgrade(){const x=await fetch('/api/billing/checkout',{method:'POST'});const j=await x.json();if(j.url)location.href=j.url;else alert(j.error||'Billing is not configured yet')}
 const f=document.getElementById('f');if(f)f.onsubmit=async e=>{e.preventDefault();status.textContent='Uploading and queueing…';const x=await fetch('/api/jobs',{method:'POST',body:new FormData(f)});const j=await x.json();if(!x.ok){status.textContent=j.error||'Error';return}poll(j.id)};
 async function poll(id){const x=await fetch('/api/jobs/'+id),j=await x.json();status.textContent=j.message||j.status;fill.style.width=(j.progress||0)+'%';if(j.status==='done'||j.status==='error'){loadJobs();return}setTimeout(()=>poll(id),1000)}
 async function loadJobs(){const x=await fetch('/api/jobs'),j=await x.json();jobs.innerHTML=j.jobs.map(job=>{let html='<div class=job><b>'+job.id.slice(0,8)+'</b> <span class=badge>'+job.status+'</span><p>'+escapeHtml(job.message||'')+'</p>';if(job.status==='done'&&job.clips){html+=job.clips.map((c,i)=>'<div class=clip><video controls playsinline src="'+c.url+'"></video><div><h3>#'+(i+1)+' '+escapeHtml(c.title)+'</h3><p>'+escapeHtml(c.reason)+'</p><a href="'+c.url+'" download>Download</a></div></div>').join('')}if(job.error)html+='<p class=error>'+escapeHtml(job.error)+'</p>';return html+'</div>'}).join('')||'<p class=muted>No jobs yet.</p>'}
@@ -170,6 +171,41 @@ def create():
     except ValueError:count=8
     opts={"template":request.form.get("template","tiktok"),"captions":request.form.get("captions","karaoke"),"visuals":request.form.get("visuals","on"),"upload":"off"}
     create_job(jid,user["id"]); EXECUTOR.submit(run_job,jid,user["id"],paths,count,opts); return jsonify(id=jid)
+
+@app.post("/api/billing/checkout")
+def billing_checkout():
+    user=current_user()
+    if not user:return jsonify(error="authentication required"),401
+    if user["plan"]=="pro":return jsonify(error="Already on Pro"),400
+    secret=os.getenv("STRIPE_SECRET_KEY"); price=os.getenv("STRIPE_PRO_PRICE_ID")
+    if not secret or not price:return jsonify(error="Stripe billing is not configured yet"),503
+    try:
+        import stripe
+        stripe.api_key=secret
+        base=request.url_root.rstrip("/")
+        checkout=stripe.checkout.Session.create(mode="subscription",customer_email=user["email"],client_reference_id=user["id"],subscription_data={"metadata":{"user_id":user["id"]}},line_items=[{"price":price,"quantity":1}],success_url=base+"/?billing=success",cancel_url=base+"/?billing=cancel")
+        return jsonify(url=checkout.url)
+    except Exception as exc:return jsonify(error=str(exc)),502
+
+@app.post("/api/billing/webhook")
+def billing_webhook():
+    secret=os.getenv("STRIPE_WEBHOOK_SECRET")
+    if not secret:return jsonify(error="Stripe webhook is not configured"),503
+    try:
+        import stripe
+        event=stripe.Webhook.construct_event(request.data,request.headers.get("Stripe-Signature",""),secret)
+        obj=event["data"]["object"]; kind=event["type"]
+        if kind=="checkout.session.completed":
+            uid=obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
+            if uid:set_plan(uid,"pro")
+        elif kind in {"customer.subscription.created","customer.subscription.updated"}:
+            uid=(obj.get("metadata") or {}).get("user_id")
+            if uid:set_plan(uid,"pro" if obj.get("status") in {"active","trialing"} else "free")
+        elif kind=="customer.subscription.deleted":
+            uid=(obj.get("metadata") or {}).get("user_id")
+            if uid:set_plan(uid,"free")
+        return jsonify(received=True)
+    except Exception as exc:return jsonify(error=str(exc)),400
 
 @app.get("/api/jobs")
 def jobs():
