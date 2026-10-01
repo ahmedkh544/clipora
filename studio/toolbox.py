@@ -98,3 +98,43 @@ def openshorts_available() -> bool:
 
 def steezy_available() -> bool:
     return Path("vendor/steezy-clipper").exists()
+
+
+def vertical_crop_x(video_path: str, width: int=720, height: int=1280) -> int:
+    """Find a stable 9:16 crop center using sampled OpenCV face detection; center fallback."""
+    try:
+        import cv2
+        cap=cv2.VideoCapture(video_path)
+        if not cap.isOpened(): return 0
+        vw=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0); vh=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        if vw<=0 or vh<=0: return 0
+        crop_w=min(vw,max(2,int(round(vh*width/height))))
+        if crop_w>=vw:return 0
+        cascade=cv2.CascadeClassifier(cv2.data.haarcascades+"haarcascade_frontalface_default.xml")
+        centers=[]
+        total=int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0); step=max(1,total//12) if total else 30
+        i=0
+        while True:
+            ok,frame=cap.read()
+            if not ok:break
+            if i%step==0:
+                gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY); faces=cascade.detectMultiScale(gray,1.1,5,minSize=(48,48))
+                if len(faces):
+                    x,y,w,h=max(faces,key=lambda f:f[2]*f[3]); centers.append(x+w/2)
+            i+=1
+            if i>step*12:break
+        cap.release()
+        center=sum(centers)/len(centers) if centers else vw/2
+        return max(0,min(vw-crop_w,int(round(center-crop_w/2))))
+    except Exception:
+        return 0
+
+
+def visual_filter(crop_x: int, source_width: int, source_height: int, width: int=720, height: int=1280, zoom_level: float=0.02) -> str:
+    """Create a vertical crop plus a restrained zoom, avoiding aggressive auto-editing."""
+    crop_w=min(source_width,max(2,int(round(source_height*width/height))))
+    z=max(0.0,min(0.045,zoom_level))
+    if z<=0: return f"crop={crop_w}:{source_height}:{crop_x}:0,scale={width}:{height}"
+    zw=int(round(crop_w*(1+z))); zh=int(round(source_height*(1+z)))
+    zx=max(0,int(round(crop_x-z*crop_w/2))); zy=max(0,int(round(-z*source_height/2)))
+    return f"scale={zw}:{zh},crop={crop_w}:{source_height}:{zx}:{zy},scale={width}:{height}"

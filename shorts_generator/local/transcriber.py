@@ -5,10 +5,16 @@ expects: {duration, segments[start, end, text]}.
 """
 import os
 import re
+import json
 from pathlib import Path
 from typing import Dict, Optional
 
 from ..config import LOCAL_OUTPUT_DIR, LOCAL_WHISPER_DEVICE, LOCAL_WHISPER_MODEL
+
+
+def _word_cache_path(media_path: str) -> Path:
+    cache_dir=Path(LOCAL_OUTPUT_DIR); cache_dir.mkdir(parents=True,exist_ok=True)
+    return cache_dir/(Path(media_path).stem+".words.json")
 
 
 def _transcript_cache_path(media_path: str) -> Path:
@@ -98,6 +104,7 @@ def _resolve_device() -> str:
 def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
     """Run faster-whisper on a local file path, caching the result as .srt."""
     cache_path = _transcript_cache_path(media_path)
+    word_cache=_word_cache_path(media_path)
     if cache_path.exists():
         source_mtime = os.path.getmtime(media_path)
         cache_mtime = cache_path.stat().st_mtime
@@ -109,12 +116,12 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
                 print(f"[transcribe/local] cache is empty/invalid, deleting: {cache_path}", flush=True)
                 cache_path.unlink(missing_ok=True)
             else:
-                print(
-                    f"[transcribe/local] {len(cached['segments'])} cached segments, "
-                    f"{cached['duration']:.0f}s of audio",
-                    flush=True,
-                )
-                return cached
+                if word_cache.exists() and word_cache.stat().st_mtime>=source_mtime:
+                    try: cached["segments"]=json.loads(word_cache.read_text(encoding="utf-8"))["segments"]
+                    except Exception: pass
+                    print(f"[transcribe/local] {len(cached['segments'])} cached segments with word timings, {cached['duration']:.0f}s of audio",flush=True)
+                    return cached
+                print("[transcribe/local] legacy transcript cache has no word timings; re-transcribing",flush=True)
 
     try:
         from faster_whisper import WhisperModel  # type: ignore
@@ -137,6 +144,7 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
         "language": language,
         "beam_size": 1,
         "condition_on_previous_text": False,
+        "word_timestamps": True,
     }
     if LOCAL_WHISPER_VAD_FILTER:
         transcribe_kwargs["vad_filter"] = True
@@ -148,15 +156,15 @@ def transcribe_local(media_path: str, language: Optional[str] = None) -> Dict:
 
     segments = []
     for s in segments_iter:
-        segments.append({
-            "start": float(s.start),
-            "end": float(s.end),
-            "text": (s.text or "").strip(),
-        })
+        words=[]
+        for w in (getattr(s,"words",None) or []):
+            words.append({"start":float(w.start),"end":float(w.end),"word":str(w.word or "").strip()})
+        segments.append({"start":float(s.start),"end":float(s.end),"text":(s.text or "").strip(),"words":words})
 
     duration = float(getattr(info, "duration", 0.0)) or (segments[-1]["end"] if segments else 0.0)
     print(f"[transcribe/local] {len(segments)} segments, {duration:.0f}s of audio", flush=True)
     transcript = {"duration": duration, "segments": segments}
     cache_path = _write_srt_cache(media_path, transcript)
+    word_cache.write_text(json.dumps(transcript,ensure_ascii=False),encoding="utf-8")
     print(f"[transcribe/local] wrote cache: {cache_path}", flush=True)
     return transcript
