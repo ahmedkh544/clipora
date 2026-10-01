@@ -77,3 +77,13 @@ def test_narrative_sequence_prefers_a_nearby_scene_break_over_an_early_sentence_
     ]}
     clips = select_narrative_sequence(transcript, count=2, target_duration=55)
     assert clips[0]["end_time"] == 56
+
+def test_narrative_sequence_avoids_boundary_before_a_continuation_clause():
+    transcript = {"segments": [
+        {"start": 0, "end": 20, "text": "The decision looked simple on paper."},
+        {"start": 20, "end": 30, "text": "But the result was different because."},
+        {"start": 30, "end": 42, "text": "because the market changed overnight."},
+        {"start": 42, "end": 55, "text": "That forced the team to change direction."},
+    ]}
+    clips = select_narrative_sequence(transcript, count=2, target_duration=32)
+    assert clips[0]["end_time"] == 42
