@@ -1,4 +1,5 @@
-from studio.core import score_segment, select_highlights, select_narrative_sequence, build_keep_ranges, map_time, choose_scene_aware_boundary
+from studio.core import score_segment, select_highlights, select_narrative_sequence, build_keep_ranges, map_time, choose_scene_aware_boundary, detect_visual_scene_boundaries
+from studio.toolbox import detect_with_transnetv2, refine_boundary_with_waveform, refine_narrative_boundaries, run_frameshift, run_autocaption, video_conveyor_available, openshorts_available, steezy_available, broll_search_available
 
 def test_hook_language_scores_above_plain_text():
     assert score_segment("Nobody knows the secret mistake that changed everything!") > score_segment("Today we discuss the weather.")
@@ -92,3 +93,37 @@ def test_scene_aware_boundary_prefers_nearby_visual_scene_change():
     scene_boundaries=[48.0,56.0,74.0]
     boundary=choose_scene_aware_boundary(50.0,scene_boundaries,45.0,70.0)
     assert boundary == 56.0
+
+def test_visual_scene_detector_returns_ordered_boundaries_for_real_video():
+    from pathlib import Path
+    boundaries=detect_visual_scene_boundaries(str(Path(__file__).parents[1]/"studio_test.mp4"))
+    assert boundaries == sorted(boundaries)
+    assert all(x >= 0 for x in boundaries)
+
+def test_optional_transnetv2_integration_is_safe_when_not_installed():
+    assert detect_with_transnetv2("missing.mp4") == []
+
+def test_waveform_refinement_returns_a_real_boundary():
+    from pathlib import Path
+    desired=refine_boundary_with_waveform(str(Path(__file__).parents[1]/"studio_test.mp4"), 3.0)
+    assert 1.5 <= desired <= 4.5
+
+def test_frameshift_adapter_is_safe_when_cli_is_absent():
+    ok,_=run_frameshift("missing.mp4","out.mp4")
+    assert ok is False
+
+def test_autocaption_adapter_is_safe_when_cli_is_absent():
+    ok,_=run_autocaption("missing.mp4","out.mp4")
+    assert ok is False
+
+def test_open_source_pipeline_adapters_are_safe_without_vendor_checkouts():
+    assert video_conveyor_available() is False
+    assert openshorts_available() is False
+    assert steezy_available() is False
+    assert broll_search_available() is False
+
+def test_waveform_refinement_preserves_narrative_continuity():
+    clips=[{"start_time":0.0,"end_time":3.0},{"start_time":3.0,"end_time":6.0},{"start_time":6.0,"end_time":9.0}]
+    out=refine_narrative_boundaries("missing.mp4",clips)
+    assert out[1]["start_time"] == out[0]["end_time"]
+    assert out[2]["start_time"] == out[1]["end_time"]

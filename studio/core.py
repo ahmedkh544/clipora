@@ -19,7 +19,19 @@ def choose_scene_aware_boundary(desired: float, scene_boundaries: List[float], m
     return min(after,key=lambda x:x-desired) if after else max(valid)
 
 def detect_visual_scene_boundaries(video_path: str, sample_fps: float=2.0, threshold: float=0.45, min_gap: float=2.0) -> List[float]:
-    """Detect abrupt visual changes with lightweight HSV histogram comparison."""
+    """Detect shot boundaries with PySceneDetect, with the previous OpenCV detector as fallback."""
+    try:
+        from scenedetect import open_video, SceneManager
+        from scenedetect.detectors import ContentDetector
+        video=open_video(video_path)
+        fps=float(video.frame_rate or 25.0)
+        manager=SceneManager()
+        manager.add_detector(ContentDetector(threshold=27.0, min_scene_len=max(1,int(round(fps*min_gap)))))
+        manager.detect_scenes(video=video, show_progress=False)
+        scenes=manager.get_scene_list()
+        return [round(scene[1].get_seconds(),3) for scene in scenes[:-1]]
+    except Exception:
+        pass
     try: import cv2
     except ImportError: return []
     cap=cv2.VideoCapture(video_path)
